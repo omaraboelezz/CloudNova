@@ -146,7 +146,7 @@ body {
 .sidebar-toggle-button svg {
   stroke: var(--text-primary);
 }
-/* --- Sidebar Specific Styles --- */
+
 .sidebar {
   position: fixed;
   top: 0;

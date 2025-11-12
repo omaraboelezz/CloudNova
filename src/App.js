@@ -1,9 +1,14 @@
-// src/App.js
+
 import React, { useState, useEffect, useRef } from 'react';
 import './App.css';
-// Import the SettingPage component
-import SettingPage from './SettingPage/setting.tsx'; // Ensure it's exported as a component
+import SettingPage from './SettingPage/setting.tsx';
 import { BrowserRouter as Router, Routes, Route, Link, useNavigate } from 'react-router-dom';
+import ReactMarkdown from "react-markdown";
+import remarkMath from "remark-math";
+import rehypeKatex from "rehype-katex";
+import "katex/dist/katex.min.css";
+import "@fortawesome/fontawesome-free/css/all.min.css";
+
 
 function App() {
   const [question, setQuestion] = useState('');
@@ -30,12 +35,8 @@ function App() {
   const uploadOptionsRef = useRef(null);
   const sidebarRef = useRef(null);
   const sidebarToggleRef = useRef(null);
-
-  // useNavigate must be called inside a component that is rendered within a Router
-  // We'll move the Router to the highest level, so App can use useNavigate
   const navigate = useNavigate();
 
-  // Effect for theme and click outside handlers
   useEffect(() => {
     document.body.setAttribute('data-theme', theme);
     localStorage.setItem('theme', theme);
@@ -60,7 +61,6 @@ function App() {
     };
   }, [theme]);
 
-  // Effect to save chatHistory to localStorage whenever it changes
   useEffect(() => {
     try {
       localStorage.setItem('chatHistory', JSON.stringify(chatHistory));
@@ -81,9 +81,9 @@ function App() {
     setQuestion('');
     setAnswer('');
     setUploadedFile(null);
-    setCurrentChatId(null); // No chat is active when starting a new one
+    setCurrentChatId(null);
     setIsSidebarOpen(false);
-    navigate('/'); // Navigate to home
+    navigate('/');
     console.log("Starting new chat.");
   };
 
@@ -92,54 +92,46 @@ function App() {
     if (chatToLoad) {
       setQuestion(chatToLoad.question);
       setAnswer(chatToLoad.answer);
-      setUploadedFile(null); // Clear file as it's not saved in history for now
+      setUploadedFile(null);
       setCurrentChatId(chatId);
       setIsSidebarOpen(false);
-      navigate('/'); // Navigate to home after loading chat
+      navigate('/');
     }
   };
 
   const handleSubmit = async () => {
+    if (!question.trim() && !uploadedFile) return;
+
     setIsLoading(true);
     setAnswer('');
     setIsSidebarOpen(false);
 
-    console.log("Submitting:", { question, uploadedFile });
+    try {
+      const res = await fetch("http://127.0.0.1:5000/solve", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ question }),
+      });
 
-    setTimeout(() => {
-      const newAnswer =
-        "Here's a step-by-step solution to your question:\n\n" +
-        "1. First, understand the problem thoroughly.\n" +
-        "2. Break down the problem into smaller, manageable steps.\n" +
-        "3. Research or recall relevant concepts.\n" +
-        "4. Apply those concepts to solve each step.\n" +
-        "5. Review your solution and ensure it makes sense.";
-
+      const data = await res.json();
+      const newAnswer = data.response;
       setAnswer(newAnswer);
+
+      const newChat = {
+        id: Date.now(),
+        question,
+        answer: newAnswer,
+      };
+
+      setChatHistory(prev => [newChat, ...prev]);
+      setCurrentChatId(newChat.id);
+
+    } catch (err) {
+      console.error(err);
+      setAnswer("Oops! Something went wrong.");
+    } finally {
       setIsLoading(false);
-
-      // Save the new chat to history only if a question was asked
-      if (question.trim()) {
-        const newChat = {
-          id: Date.now(), // Simple unique ID
-          question: question,
-          answer: newAnswer,
-          timestamp: new Date().toISOString(), // For potential sorting later
-        };
-
-        setChatHistory((prevHistory) => {
-          // If editing an existing chat, update it. Otherwise, add new.
-          if (currentChatId) {
-            return prevHistory.map(chat =>
-              chat.id === currentChatId ? { ...chat, question, answer: newAnswer } : chat
-            );
-          }
-          return [newChat, ...prevHistory]; // Add new chat to the beginning
-        });
-        setCurrentChatId(newChat.id); // Set the newly saved chat as current
-      }
-
-    }, 2000);
+    }
   };
 
   const handleFileChange = (event) => {
@@ -198,7 +190,6 @@ function App() {
     return title.length === 30 ? title + '...' : title;
   };
 
-  // Main content component to render based on route
   const MainContent = () => (
     <main className="content-area">
       <div className="input-section">
@@ -211,12 +202,14 @@ function App() {
           onDrop={handleDrop}
         >
           <textarea
-            id="question-input"
-            rows="6"
+            autoFocus
             value={question}
             onChange={(e) => setQuestion(e.target.value)}
-            placeholder="Type your question here, or drag & drop a file above."
-          ></textarea>
+            onFocus={(e) =>
+              e.target.setSelectionRange(e.target.value.length, e.target.value.length)
+            }
+            placeholder="Type your question here"
+          />
 
           <div className="main-upload-button-wrapper" ref={uploadOptionsRef}>
             <button
@@ -273,9 +266,14 @@ function App() {
       {answer && (
         <div className="answer-section">
           <h2>Solution:</h2>
-          <pre className="solution-text">{answer}</pre>
+          <ReactMarkdown
+            children={answer}
+            remarkPlugins={[remarkMath]}
+            rehypePlugins={[rehypeKatex]}
+          />
         </div>
       )}
+
 
       {isLoading && (
         <div className="loading-indicator">
@@ -285,88 +283,99 @@ function App() {
     </main>
   );
 
-  return ( // THIS IS THE ROUTER YOU NEED TO REMOVE
-    // <Router>
-      <div className={`app-wrapper ${theme}-mode`}>
-        {/* Sidebar component */}
-        <div ref={sidebarRef} className={`sidebar ${isSidebarOpen ? 'open' : ''}`}>
-          <div className="sidebar-header">
-            <button onClick={toggleSidebar} className="sidebar-toggle-button" ref={sidebarToggleRef}>
-              <svg xmlns="http://www.w3.000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
-            </button>
-          </div>
-          <nav className="sidebar-nav">
-            <Link to="/" onClick={startNewChat} className="nav-item">
-              <svg xmlns="http://www.w3.000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
-              <span>Home</span>
-            </Link>
-            <Link to="/history" className="nav-item" onClick={() => setIsSidebarOpen(false)}>
-              <svg xmlns="http://www.w3.000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2v10l4 4"></path><circle cx="12" cy="12" r="10"></circle></svg>
-              <span>History</span>
-            </Link>
-            <Link to="/settings" className="nav-item" onClick={() => setIsSidebarOpen(false)}>
-              <svg xmlns="http://www.w3.000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0-.33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1.82.33l-.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09z"></path></svg>
-              <span>Settings</span>
-            </Link>
-          </nav>
-
-          <button onClick={startNewChat} className="new-chat-button">
-            <svg xmlns="http://www.w3.000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-            <span>New Chat</span>
+  return (
+    <div className={`app-wrapper ${theme}-mode`}>
+      <div ref={sidebarRef} className={`sidebar ${isSidebarOpen ? 'open' : ''}`}>
+        <div className="sidebar-header">
+          <button onClick={toggleSidebar} className="sidebar-toggle-button" ref={sidebarToggleRef}>
+            <svg xmlns="http://www.w3.000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
           </button>
+        </div>
+        <nav className="sidebar-nav">
+          <Link to="/" onClick={startNewChat} className="nav-item">
+            <i className="fas fa-home"></i>
+            <span>Home</span>
+          </Link>
+          <Link to="/history" className="nav-item" onClick={() => setIsSidebarOpen(false)}>
+            <i class="fas fa-clock"></i>
+            <span>History</span>
+          </Link>
+          <Link to="/settings" className="nav-item" onClick={() => setIsSidebarOpen(false)}>
+            <i class="fas fa-cog"></i>
+            <span>Settings</span>
+          </Link>
+        </nav>
 
-          <div className="sidebar-chat-history">
-            {chatHistory.length === 0 ? (
-              <h3 className="no-history-message">Start a new chat!</h3>
-            ) : (
-              <ul>
-                {chatHistory.map((chat) => (
-                  <li
-                    key={chat.id}
-                    className={`history-item ${chat.id === currentChatId ? 'active' : ''}`}
-                    onClick={() => loadChat(chat.id)}
-                  >
-                    <svg xmlns="http://www.w3.000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V3a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
-                    <span>{getChatTitle(chat)}</span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
+        <button onClick={startNewChat} className="new-chat-button">
+          <svg xmlns="http://www.w3.000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+          <span>New Chat</span>
+        </button>
 
-          <div className="sidebar-footer">
-            <div className="user-profile">
-              <svg xmlns="http://www.w3.000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
-              <span>Get Mamun</span>
-            </div>
-          </div>
+          <h3
+    style={{
+      fontWeight: 600,
+      fontSize: '16px',
+      marginBottom: '10px',
+      color: '#ffffff8e', // تقدر تغيّر اللون حسب الثيم بتاعك
+      textAlign: 'left',
+      marginLeft: '35px',
+    }}
+  >
+    Chat History :
+  </h3>
+
+        <div className="sidebar-chat-history">
+
+          {chatHistory.length === 0 ? (
+            <h3 className="no-history-message">Start a new chat!</h3>
+          ) : (
+            <ul>
+              {chatHistory.map((chat) => (
+                <li
+                  key={chat.id}
+                  className={`history-item ${chat.id === currentChatId ? 'active' : ''}`}
+                  onClick={() => loadChat(chat.id)}
+                >
+                  <i className="fas fa-comments" style={{ marginRight: '8px' }}></i>
+                  <span>{getChatTitle(chat)}</span>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
 
-        {isSidebarOpen && <div className="overlay" onClick={toggleSidebar}></div>}
 
-        <div className={`app-container ${isSidebarOpen ? 'sidebar-open' : ''}`}>
-          <header className="app-header">
-            <button onClick={toggleSidebar} className="sidebar-toggle-button" ref={sidebarToggleRef}>
-              <svg xmlns="http://www.w3.000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
-            </button>
-            <h1>AI Question Solver</h1>
-            <button onClick={toggleTheme} className="theme-toggle-button">
-              Switch to {theme === 'light' ? 'Dark' : 'Light'} Mode
-            </button>
-          </header>
-
-          {/* Define your routes */}
-          <Routes>
-            <Route path="/" element={<MainContent />} />
-            <Route path="/settings" element={<SettingPage />} />
-            <Route path="/history" element={<div><h2>Chat History</h2><p>Display your chat history here.</p></div>} />
-          </Routes>
+        <div className="sidebar-footer">
+          <div className="user-profile">
+            <svg xmlns="http://www.w3.000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+            <span>Get Mamun</span>
+          </div>
         </div>
       </div>
+
+      {isSidebarOpen && <div className="overlay" onClick={toggleSidebar}></div>}
+
+      <div className={`app-container ${isSidebarOpen ? 'sidebar-open' : ''}`}>
+        <header className="app-header">
+          <button onClick={toggleSidebar} className="sidebar-toggle-button" ref={sidebarToggleRef}>
+            <i class="fa-solid fa-bars"></i>
+          </button>
+          <h1>AI Question Solver</h1>
+          <button onClick={toggleTheme} className="theme-toggle-button">
+            Switch to {theme === 'light' ? 'Dark' : 'Light'} Mode
+          </button>
+        </header>
+
+        <Routes>
+          <Route path="/" element={<MainContent />} />
+          <Route path="/settings" element={<SettingPage />} />
+          <Route path="/history" element={<h2>Add your first chat</h2>} />
+        </Routes>
+      </div>
+    </div>
   );
 }
 
-// Wrapper component to provide Router context to App
 const AppWrapper = () => (
   <Router>
     <App />
