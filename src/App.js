@@ -1,13 +1,18 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import './App.css';
-import SettingPage from './SettingPage/setting.tsx';
+import SettingPage from './Components/SettingPage/setting.tsx';
 import { BrowserRouter as Router, Routes, Route, Link, useNavigate } from 'react-router-dom';
 import ReactMarkdown from "react-markdown";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 import "katex/dist/katex.min.css";
 import "@fortawesome/fontawesome-free/css/all.min.css";
+import HistoryPage from './Components/HistoryPage/HistoryPage.tsx';
+import ChatDetailPage from './Components/ChatDetailPage/ChatDetailPage.tsx';
+import { useParams } from 'react-router-dom';
+
+
 
 
 function App() {
@@ -68,7 +73,7 @@ function App() {
       console.error("Failed to save chat history to localStorage", error);
     }
   }, [chatHistory]);
-
+  
   const toggleTheme = () => {
     setTheme((prevTheme) => (prevTheme === 'light' ? 'dark' : 'light'));
   };
@@ -76,6 +81,12 @@ function App() {
   const toggleSidebar = () => {
     setIsSidebarOpen(!isSidebarOpen);
   };
+  
+  const ChatDetailWrapper = ({ chatHistory }) => {
+  const { chatId } = useParams();
+  const chat = chatHistory.find(c => c.id === Number(chatId));
+  return <ChatDetailPage chat={chat} theme={theme} />;
+};
 
   const startNewChat = () => {
     setQuestion('');
@@ -87,52 +98,73 @@ function App() {
     console.log("Starting new chat.");
   };
 
-  const loadChat = (chatId) => {
-    const chatToLoad = chatHistory.find(chat => chat.id === chatId);
-    if (chatToLoad) {
-      setQuestion(chatToLoad.question);
-      setAnswer(chatToLoad.answer);
-      setUploadedFile(null);
-      setCurrentChatId(chatId);
-      setIsSidebarOpen(false);
-      navigate('/');
-    }
-  };
-
-  const handleSubmit = async () => {
-    if (!question.trim() && !uploadedFile) return;
-
-    setIsLoading(true);
-    setAnswer('');
+const loadChat = (chatId) => {
+  const chatToLoad = chatHistory.find(chat => chat.id === chatId);
+  if (chatToLoad) {
+    // آخر سؤال:
+    const lastQuestion = chatToLoad.questions[chatToLoad.questions.length - 1]?.text || '';
+    setQuestion(lastQuestion);
+    setAnswer(chatToLoad.answer || '');
+    setUploadedFile(null);
+    setCurrentChatId(chatId);
     setIsSidebarOpen(false);
+    navigate(`/history/${chatId}`);
+  }
+};
 
-    try {
-      const res = await fetch("http://127.0.0.1:5000/solve", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question }),
-      });
 
-      const data = await res.json();
-      const newAnswer = data.response;
-      setAnswer(newAnswer);
+const handleSubmit = async () => {
+  if (!(question && question.trim()) && !uploadedFile) return;
 
+  setIsLoading(true);
+
+  try {
+    const res = await fetch("http://127.0.0.1:5000/solve", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ question }),
+    });
+
+    const data = await res.json();
+    const newAnswer = data.response;
+    const timestamp = Date.now();
+
+    if (currentChatId) {
+      setChatHistory(prev =>
+        prev.map(chat =>
+          chat.id === currentChatId
+            ? {
+                ...chat,
+                questions: [
+                  ...chat.questions,
+                  { text: question, answer: newAnswer, timestamp }
+                ],
+              }
+            : chat
+        )
+      );
+    } else {
       const newChat = {
         id: Date.now(),
-        question,
-        answer: newAnswer,
+        questions: [{ text: question, answer: newAnswer, timestamp }],
       };
-
       setChatHistory(prev => [newChat, ...prev]);
       setCurrentChatId(newChat.id);
-
-    } catch (err) {
-      console.error(err);
-      setAnswer("Oops! Something went wrong.");
-    } finally {
-      setIsLoading(false);
     }
-  };
+
+    setAnswer(newAnswer);
+    setQuestion('');
+
+  } catch (err) {
+    console.error(err);
+    setAnswer("Oops! Something went wrong.");
+  } finally {
+    setIsLoading(false);
+  }
+};
+
+
+
 
   const handleFileChange = (event) => {
     const file = event.target.files[0];
@@ -185,10 +217,15 @@ function App() {
     }
   };
 
-  const getChatTitle = (chat) => {
-    const title = chat.question.split('\n')[0].substring(0, 30);
-    return title.length === 30 ? title + '...' : title;
-  };
+const getChatTitle = (chat) => {
+  const firstQuestion = chat.questions?.[0];
+  if (!firstQuestion) return 'No questions yet';
+  
+  const title = firstQuestion.text.split('\n')[0].substring(0, 30);
+  return title.length === 30 ? title + '...' : title;
+};
+
+
 
   const MainContent = () => (
     <main className="content-area">
@@ -311,18 +348,18 @@ function App() {
           <span>New Chat</span>
         </button>
 
-          <h3
-    style={{
-      fontWeight: 600,
-      fontSize: '16px',
-      marginBottom: '10px',
-      color: '#ffffff8e', // تقدر تغيّر اللون حسب الثيم بتاعك
-      textAlign: 'left',
-      marginLeft: '35px',
-    }}
-  >
-    Chat History :
-  </h3>
+        <h3
+          style={{
+            fontWeight: 600,
+            fontSize: '16px',
+            marginBottom: '10px',
+            color: '#ffffff8e', // تقدر تغيّر اللون حسب الثيم بتاعك
+            textAlign: 'left',
+            marginLeft: '35px',
+          }}
+        >
+          Chat History :
+        </h3>
 
         <div className="sidebar-chat-history">
 
@@ -366,10 +403,22 @@ function App() {
           </button>
         </header>
 
+        
+
         <Routes>
           <Route path="/" element={<MainContent />} />
           <Route path="/settings" element={<SettingPage />} />
-          <Route path="/history" element={<h2>Add your first chat</h2>} />
+          <Route
+            path="/history"
+            element={
+              <HistoryPage
+                chatHistory={chatHistory}
+                loadChat={loadChat}
+                currentChatId={currentChatId}
+              />
+            }
+          />        
+          <Route path="/history/:chatId" element={<ChatDetailWrapper chatHistory={chatHistory} theme={theme} />} />
         </Routes>
       </div>
     </div>

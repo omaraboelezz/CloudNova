@@ -1,0 +1,35 @@
+.chat-boxes-container {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 10px;
+}
+
+.chat-box {
+  background-color: #1e1e1e; /* للثيم الغامق، عدّل حسب الحاجة */
+  color: #fff;
+  padding: 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: transform 0.1s, box-shadow 0.2s;
+}
+
+.chat-box:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+}
+
+.chat-box.active {
+  border: 2px solid #4caf50; /* لون يوضح الشات الحالي */
+}
+
+.chat-question {
+  margin: 0 0 6px 0;
+  font-weight: 600;
+}
+
+.chat-answer-preview {
+  margin: 0;
+  font-size: 0.9rem;
+  color: #ccc;
+}
